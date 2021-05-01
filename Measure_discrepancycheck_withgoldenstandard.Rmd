@@ -1,0 +1,87 @@
+---
+title: "Measure_discrepancy_check_withgoldenstandard"
+author: "Denise Abcede"
+date: '2021'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+At the organization I worked for, data validating of a specific set of assessments [n=20] were performed by manually checking each patient and time point [n=6 time points]. Through R, I created this measure discrepancy check method to automate most discrepancy-detecting. This method reduced data validating time by 70% and reduced human error significantly. For this method to work, we had to have a golden standard dataset with correct raters and time points for me to detect if a measure was missing, if there was an incorrect rater added or if time points by visit did not match. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list=ls()) #clear environment
+getwd()
+setwd('/Users/deniseabcede/Desktop/discrepcheck') #change work directory
+getwd()
+
+
+gs<-read.csv("goldenstandardmeasure.csv") #read golden measure
+m1<-read.csv("discrepcheck_msure1.csv") #read measure to check
+```
+
+
+Before merging the golden standard file with the measure you'd like to clean, I ensured the merging variables match in both datasets. It was also good practice to delete variables that are unnecessary for the cleaning and mirror the datasets so the order of the merging variables are in the same order.
+```{r cars}
+#view var names
+variable.names(gs)
+variable.names(m1)
+
+#drop any unwanted variables
+gs <- gs[!is.na(gs$PATIENTI), ]
+m1 <- m1[!is.na(m1$PATIENTI), ]
+
+#drop unnecessary variables
+gs <- gs[,c(1:6)]
+
+# reorder variables so both datasets have similar structure
+# ex.m1<-m1[,c(1,20,4,10:12,14:19)]
+# ex.gs-gfss[,c(1,20,4,10:12,14:19)]
+
+#change "m1VISIT" and "gsvisit" variables to "VISIT" for standardization of merging variables across measures
+names(m1)[c(3,5,6)] <- c("VISIT","BEGINDAT","ENDDATE")
+names(gs)[c(3,5,6)] <- c("VISIT","BEGINDAT","ENDDATE")
+
+
+#variables that will not be merged should include their measure name
+names(m1)[4] <- "M1.DATE"
+names(gs)[4] <- "GS.DATE"
+
+names(m1)
+names(gs)
+
+```
+
+When determining the best type of merge to capture discrepancies, I decided it was best to do a full merge on both sides. While I want to be sure all patients are captured and the golden standard Should indicate that, if a row in the measure side is not merged with the golden standard measure then it will not appear. Therefore, we will not know if there is ane error that this code did not address.
+
+```{r}
+merge1<-merge(gs,m1,by=c("PATIENTI","RATER","VISIT","BEGINDAT","ENDDATE"), all.x=TRUE, all.y=TRUE)
+
+```
+
+I created tables and new columns to easily indicate what specific patient data to check based on common discrepancies.
+
+```{r}
+attach(merge1)
+is.factor(PATIENTI)
+VISIT <- factor(VISIT, levels=c("33","0","3","6","9","12"))
+merge1 <- merge1[order(PATIENTI,VISIT), ]
+(dis_rater <- table(PATIENTI,RATER)) #view patient IDs where 2 raters are used for 1 patient = discrepancy
+(dis_visit <- table(PATIENTI, VISIT)) #view patient Ids where any timepoint >1 as there should only be 1 measure per timepoint = discrepancy
+
+#mark missing values
+merge1$missing_m1 <- ifelse(is.na(M1.DATE),1,0) #create new binary variable to mark for missing values by variable
+merge1$missing_gs <- ifelse(is.na(GS.DATE),1,0)
+merge1$missing_visit <- ifelse(is.na(VISIT),1,0)
+merge1$missing_rater <- ifelse(is.na(RATER),1,0)
+
+#export R into csv files for further review and data cleaning
+write.csv(merge1, "m1_discrep_check_finalproduct.csv")
+write.csv(dis_rater, "discrepancy_rater_finalproduct.csv")
+write.csv(dis_visit, "discrepancy_visit_finalproduct.csv")
+
+
+```
+
+With the output, the team is able identify missing data and incorrectly added data.
